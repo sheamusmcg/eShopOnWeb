@@ -32,13 +32,14 @@ public class CatalogViewModelService : ICatalogViewModelService
         _uriComposer = uriComposer;
     }
 
-    public async Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId)
+    public async Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId, int? priceRangeId)
     {
         _logger.LogInformation("GetCatalogItems called.");
 
-        var filterSpecification = new CatalogFilterSpecification(brandId, typeId);
+        var priceRange = CatalogPriceRange.FindById(priceRangeId);
+        var filterSpecification = new CatalogFilterSpecification(brandId, typeId, priceRange?.MinPrice, priceRange?.MaxPrice);
         var filterPaginatedSpecification =
-            new CatalogFilterPaginatedSpecification(itemsPage * pageIndex, itemsPage, brandId, typeId);
+            new CatalogFilterPaginatedSpecification(itemsPage * pageIndex, itemsPage, brandId, typeId, priceRange?.MinPrice, priceRange?.MaxPrice);
 
         // the implementation below using ForEach and Count. We need a List.
         var itemsOnPage = await _itemRepository.ListAsync(filterPaginatedSpecification);
@@ -55,8 +56,10 @@ public class CatalogViewModelService : ICatalogViewModelService
             }).ToList(),
             Brands = (await GetBrands()).ToList(),
             Types = (await GetTypes()).ToList(),
+            PriceRanges = GetPriceRanges().ToList(),
             BrandFilterApplied = brandId ?? 0,
             TypesFilterApplied = typeId ?? 0,
+            PriceRangeFilterApplied = priceRange?.Id ?? 0,
             PaginationInfo = new PaginationInfoViewModel()
             {
                 ActualPage = pageIndex,
@@ -96,6 +99,18 @@ public class CatalogViewModelService : ICatalogViewModelService
         var items = types
             .Select(type => new SelectListItem() { Value = type.Id.ToString(), Text = type.Type })
             .OrderBy(t => t.Text)
+            .ToList();
+
+        var allItem = new SelectListItem() { Value = null, Text = "All", Selected = true };
+        items.Insert(0, allItem);
+
+        return items;
+    }
+
+    private static IEnumerable<SelectListItem> GetPriceRanges()
+    {
+        var items = CatalogPriceRange.Options
+            .Select(range => new SelectListItem() { Value = range.Id.ToString(), Text = range.Label })
             .ToList();
 
         var allItem = new SelectListItem() { Value = null, Text = "All", Selected = true };

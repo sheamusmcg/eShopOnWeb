@@ -27,6 +27,26 @@ public class CatalogFilterPaginatedSpecification
         Assert.Equal(2, result.ToList().Count);
     }
 
+    [Fact]
+    public void ReturnsOnlyItemsInPriceRange()
+    {
+        var spec = new eShopWeb.ApplicationCore.Specifications.CatalogFilterPaginatedSpecification(0, 10, null, null, 1.50m, 3.00m);
+
+        var result = spec.Evaluate(GetTestCollection()).ToList();
+
+        Assert.Equal(new[] { 1.50m, 2.00m }, result.Select(i => i.Price));
+    }
+
+    [Fact]
+    public void AppliesPriceRangeBeforePaging()
+    {
+        var spec = new eShopWeb.ApplicationCore.Specifications.CatalogFilterPaginatedSpecification(1, 1, null, null, 1.50m, 3.00m);
+
+        var result = spec.Evaluate(GetTestCollection()).ToList();
+
+        Assert.Equal(2.00m, Assert.Single(result).Price);
+    }
+
     private List<CatalogItem> GetTestCollection()
     {
         var catalogItemList = new List<CatalogItem>();

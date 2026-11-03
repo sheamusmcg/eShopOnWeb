@@ -1,0 +1,80 @@
+# regression-check.yml - eShopOnWeb (Session 2, Lab Block 3b, .NET track)
+#
+# The catalog page is served by src/Web and read through its in-memory cache
+# (CachedCatalogViewModelService). Scenarios here are browser-driven: each one
+# starts the Web project on a free port against the in-memory database, loads
+# the catalog with a set of filters, and reads the rendered product list and
+# the pager line. Comparing two versions answers "did the page change for the
+# same filters". There is no outbound service call log in this app, so the
+# dependency check has nothing to assert; the comparison alone carries this
+# track's exercise.
+#
+# The scripts are Python (the regression-check skill); run them with the
+# PyShop virtual environment active, from this repo's root.
+
+project: eshoponweb
+runner: dotnet
+baseline_dir: tests/baselines
+
+app:
+  # --no-launch-profile so launchSettings.json's https URL does not override
+  # ASPNETCORE_URLS. The first start in a fresh worktree restores and builds
+  # the solution, which can take a few minutes; later starts are quicker.
+  start: >
+    ASPNETCORE_URLS=http://127.0.0.1:{port}
+    ASPNETCORE_ENVIRONMENT=Development
+    UseOnlyInMemoryDatabase=true
+    dotnet run --project src/Web --no-launch-profile
+  ready_url: "http://127.0.0.1:{port}/"
+  ready_timeout_s: 300
+
+database:
+  # In-memory EF Core provider: fresh per process, nothing to snapshot.
+  kind: sqlite
+  reset: fresh_file
+  tables: []
+
+# The readiness probe loads "/" before the steps run, so every scenario starts
+# with the unfiltered first page already cached, as it is for a user who opened
+# the home page first.
+#
+# Seed data (src/Infrastructure/Data/CatalogContextSeed.cs):
+#   brands  1 Azure, 2 .NET, 3 Visual Studio, 4 SQL Server, 5 Other
+#   types   1 Mug, 2 T-Shirt, 3 Sheet, 4 USB Memory Stick
+#   12 items; brand .NET has 6 (1 Mug, 3 T-Shirt, 2 Sheet).
+scenarios:
+  - id: catalog_unfiltered
+    type: ui
+    description: First page of the catalog with no filter
+    steps:
+      - { browser: { goto: "/", read: { selector: "span.esh-pager-item", as: pager } }, business_fields: [pager] }
+      - { browser: { goto: "/", read: { selector: "div.esh-catalog-items", as: items } }, business_fields: [items] }
+
+  - id: catalog_brand_dotnet
+    type: ui
+    description: Brand filter alone (.NET)
+    steps:
+      - { browser: { goto: "/?BrandFilterApplied=2", read: { selector: "span.esh-pager-item", as: pager } }, business_fields: [pager] }
+      - { browser: { goto: "/?BrandFilterApplied=2", read: { selector: "div.esh-catalog-items", as: items } }, business_fields: [items] }
+
+  - id: catalog_brand_then_brand_and_type
+    type: ui
+    description: Brand filter first, then the same brand with a type filter added (.NET, then .NET + Mug)
+    steps:
+      - { browser: { goto: "/?BrandFilterApplied=2", read: { selector: "span.esh-pager-item", as: pager } }, business_fields: [pager] }
+      - { browser: { goto: "/?BrandFilterApplied=2&TypesFilterApplied=1", read: { selector: "span.esh-pager-item", as: pager } }, business_fields: [pager] }
+      - { browser: { goto: "/?BrandFilterApplied=2&TypesFilterApplied=1", read: { selector: "div.esh-catalog-items", as: items } }, business_fields: [items] }
+
+  - id: catalog_type_then_brand_and_type
+    type: ui
+    description: Type filter alone after the unfiltered page, then brand and type together (Sheet, then .NET + Sheet)
+    steps:
+      - { browser: { goto: "/?TypesFilterApplied=3", read: { selector: "span.esh-pager-item", as: pager } }, business_fields: [pager] }
+      - { browser: { goto: "/?BrandFilterApplied=2&TypesFilterApplied=3", read: { selector: "span.esh-pager-item", as: pager } }, business_fields: [pager] }
+      - { browser: { goto: "/?BrandFilterApplied=2&TypesFilterApplied=3", read: { selector: "div.esh-catalog-items", as: items } }, business_fields: [items] }
+
+normalize: []
+
+baseline_approval:
+  label: baseline-change
+  codeowners_path: tests/baselines/

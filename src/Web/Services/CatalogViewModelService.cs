@@ -12,6 +12,18 @@ namespace Microsoft.eShopWeb.Web.Services;
 /// </summary>
 public class CatalogViewModelService : ICatalogViewModelService
 {
+    /// <summary>
+    /// Preset price bands offered in the catalog price dropdown. Minimum is inclusive and maximum is exclusive;
+    /// a null bound means that side is unbounded.
+    /// </summary>
+    public static readonly IReadOnlyList<PriceBand> PriceBands = new[]
+    {
+        new PriceBand("under-10", "Under $10", null, 10m),
+        new PriceBand("10-15", "$10–$15", 10m, 15m),
+        new PriceBand("15-20", "$15–$20", 15m, 20m),
+        new PriceBand("20-and-over", "$20 and over", 20m, null),
+    };
+
     private readonly ILogger<CatalogViewModelService> _logger;
     private readonly IRepository<CatalogItem> _itemRepository;
     private readonly IRepository<CatalogBrand> _brandRepository;
@@ -32,13 +44,16 @@ public class CatalogViewModelService : ICatalogViewModelService
         _uriComposer = uriComposer;
     }
 
-    public async Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId)
+    public async Task<CatalogIndexViewModel> GetCatalogItems(int pageIndex, int itemsPage, int? brandId, int? typeId, string? priceRange)
     {
         _logger.LogInformation("GetCatalogItems called.");
 
-        var filterSpecification = new CatalogFilterSpecification(brandId, typeId);
+        // An unrecognized price band is treated as no price filter, the same as an unknown brand or type.
+        var band = FindPriceBand(priceRange);
+
+        var filterSpecification = new CatalogFilterSpecification(brandId, typeId, band?.MinPrice, band?.MaxPrice);
         var filterPaginatedSpecification =
-            new CatalogFilterPaginatedSpecification(itemsPage * pageIndex, itemsPage, brandId, typeId);
+            new CatalogFilterPaginatedSpecification(itemsPage * pageIndex, itemsPage, brandId, typeId, band?.MinPrice, band?.MaxPrice);
 
         // the implementation below using ForEach and Count. We need a List.
         var itemsOnPage = await _itemRepository.ListAsync(filterPaginatedSpecification);
@@ -55,8 +70,10 @@ public class CatalogViewModelService : ICatalogViewModelService
             }).ToList(),
             Brands = (await GetBrands()).ToList(),
             Types = (await GetTypes()).ToList(),
+            PriceRanges = GetPriceRanges().ToList(),
             BrandFilterApplied = brandId ?? 0,
             TypesFilterApplied = typeId ?? 0,
+            PriceFilterApplied = band?.Key,
             PaginationInfo = new PaginationInfoViewModel()
             {
                 ActualPage = pageIndex,
@@ -103,4 +120,23 @@ public class CatalogViewModelService : ICatalogViewModelService
 
         return items;
     }
+
+    public static PriceBand? FindPriceBand(string? key)
+    {
+        return PriceBands.FirstOrDefault(band => string.Equals(band.Key, key, StringComparison.Ordinal));
+    }
+
+    private static IEnumerable<SelectListItem> GetPriceRanges()
+    {
+        var items = PriceBands
+            .Select(band => new SelectListItem() { Value = band.Key, Text = band.Text })
+            .ToList();
+
+        var allItem = new SelectListItem() { Value = null, Text = "All", Selected = true };
+        items.Insert(0, allItem);
+
+        return items;
+    }
+
+    public sealed record PriceBand(string Key, string Text, decimal? MinPrice, decimal? MaxPrice);
 }

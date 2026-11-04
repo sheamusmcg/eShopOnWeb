@@ -5,7 +5,10 @@ namespace Microsoft.eShopWeb.ApplicationCore.Specifications;
 
 public class CatalogFilterPaginatedSpecification : Specification<CatalogItem>
 {
-    public CatalogFilterPaginatedSpecification(int skip, int take, int? brandId, int? typeId)
+    /// <param name="minPrice">Inclusive lower bound on price, or null for no lower bound.</param>
+    /// <param name="maxPrice">Exclusive upper bound on price, or null for no upper bound.</param>
+    public CatalogFilterPaginatedSpecification(int skip, int take, int? brandId, int? typeId,
+        decimal? minPrice = null, decimal? maxPrice = null)
         : base()
     {
         if (take == 0)
@@ -14,7 +17,9 @@ public class CatalogFilterPaginatedSpecification : Specification<CatalogItem>
         }
         Query
             .Where(i => (!brandId.HasValue || i.CatalogBrandId == brandId) &&
-            (!typeId.HasValue || i.CatalogTypeId == typeId))
+            (!typeId.HasValue || i.CatalogTypeId == typeId) &&
+            (!minPrice.HasValue || i.Price >= minPrice) &&
+            (!maxPrice.HasValue || i.Price < maxPrice))
             .Skip(skip).Take(take);
     }
 }
